@@ -106,7 +106,9 @@ export async function addTypingIndicator(params: {
     // instead of throwing. Detect backoff codes and throw to trip the breaker.
     if (hasBackoffCodeInResponse(response)) {
       const code = (response as { code?: number }).code;
-      console.log(`[feishu] typing indicator response contains backoff code ${code}, stopping keepalive`);
+      console.log(
+        `[feishu] typing indicator response contains backoff code ${code}, stopping keepalive`,
+      );
       throw new Error(`Feishu API backoff: code ${code}`);
     }
 
@@ -157,7 +159,9 @@ export async function removeTypingIndicator(params: {
     // Check for backoff codes in non-throwing SDK responses
     if (hasBackoffCodeInResponse(result)) {
       const code = (result as { code?: number }).code;
-      console.log(`[feishu] typing indicator removal response contains backoff code ${code}, stopping keepalive`);
+      console.log(
+        `[feishu] typing indicator removal response contains backoff code ${code}, stopping keepalive`,
+      );
       throw new Error(`Feishu API backoff: code ${code}`);
     }
   } catch (err) {
