@@ -7,13 +7,62 @@ import { createFeishuClient } from "./client.js";
 // Full list: https://github.com/go-lark/lark/blob/main/emoji.go
 const TYPING_EMOJI = "Typing"; // Typing indicator emoji
 
+/**
+ * Feishu API error codes that indicate the caller should back off.
+ * These must propagate to the typing circuit breaker so the keepalive loop
+ * can trip and stop retrying.
+ *
+ * - 99991403: Monthly API call quota exceeded
+ * - 99991400: Rate limit (too many requests per second)
+ *
+ * @see https://open.feishu.cn/document/server-docs/getting-started/server-error-codes
+ */
+const FEISHU_BACKOFF_CODES = new Set([99991403, 99991400]);
+
 export type TypingIndicatorState = {
   messageId: string;
   reactionId: string | null;
 };
 
 /**
- * Add a typing indicator (reaction) to a message
+ * Check whether an error represents a rate-limit or quota-exceeded condition
+ * from the Feishu API that should stop the typing keepalive loop.
+ *
+ * Handles two shapes:
+ * 1. AxiosError with `response.status` and `response.data.code`
+ * 2. Feishu SDK error with a top-level `code` property
+ */
+export function isFeishuBackoffError(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) {
+    return false;
+  }
+
+  // AxiosError shape: err.response.status / err.response.data.code
+  const response = (err as { response?: { status?: number; data?: { code?: number } } }).response;
+  if (response) {
+    if (response.status === 429) {
+      return true;
+    }
+    if (typeof response.data?.code === "number" && FEISHU_BACKOFF_CODES.has(response.data.code)) {
+      return true;
+    }
+  }
+
+  // Feishu SDK error shape: err.code
+  const code = (err as { code?: number }).code;
+  if (typeof code === "number" && FEISHU_BACKOFF_CODES.has(code)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Add a typing indicator (reaction) to a message.
+ *
+ * Rate-limit and quota errors are re-thrown so the circuit breaker in
+ * `createTypingCallbacks` (typing-start-guard) can trip and stop the
+ * keepalive loop. See #28062.
  */
 export async function addTypingIndicator(params: {
   cfg: ClawdbotConfig;
@@ -40,14 +89,20 @@ export async function addTypingIndicator(params: {
     const reactionId = (response as any)?.data?.reaction_id ?? null;
     return { messageId, reactionId };
   } catch (err) {
-    // Silently fail - typing indicator is not critical
+    if (isFeishuBackoffError(err)) {
+      console.log(`[feishu] typing indicator hit rate-limit/quota, stopping keepalive`);
+      throw err;
+    }
+    // Silently fail for other non-critical errors (e.g. message deleted, permission issues)
     console.log(`[feishu] failed to add typing indicator: ${err}`);
     return { messageId, reactionId: null };
   }
 }
 
 /**
- * Remove a typing indicator (reaction) from a message
+ * Remove a typing indicator (reaction) from a message.
+ *
+ * Rate-limit and quota errors are re-thrown for the same reason as above.
  */
 export async function removeTypingIndicator(params: {
   cfg: ClawdbotConfig;
@@ -74,7 +129,11 @@ export async function removeTypingIndicator(params: {
       },
     });
   } catch (err) {
-    // Silently fail - cleanup is not critical
+    if (isFeishuBackoffError(err)) {
+      console.log(`[feishu] typing indicator removal hit rate-limit/quota, stopping keepalive`);
+      throw err;
+    }
+    // Silently fail for other non-critical errors
     console.log(`[feishu] failed to remove typing indicator: ${err}`);
   }
 }
