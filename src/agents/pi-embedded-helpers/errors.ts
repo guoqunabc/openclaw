@@ -864,7 +864,7 @@ export function isLikelySSEParseError(errorMessage?: string, errorStack?: string
     stackLower.includes("_stream") ||
     stackLower.includes("anthropic") ||
     stackLower.includes("openai");
-  const messageIndicatesStreaming = lower.includes("sse") || lower.includes("stream");
+  const messageIndicatesStreaming = lower.includes("sse") || /\bstream(ing)?\b/.test(lower);
   const hasStreamingContext = errorStack ? stackIndicatesStreaming : messageIndicatesStreaming;
 
   // Core pattern: SyntaxError from JSON.parse on SSE data
@@ -880,7 +880,7 @@ export function isLikelySSEParseError(errorMessage?: string, errorStack?: string
     lower.includes("json") ||
     lower.includes("json.parse") ||
     lower.includes("sse") ||
-    lower.includes("stream");
+    /\bstream(ing)?\b/.test(lower);
 
   if (hasSyntaxError && hasJsonContext && hasStreamingContext) {
     return true;

@@ -166,4 +166,13 @@ describe("isLikelySSEParseError", () => {
       expect(isLikelySSEParseError(sseMessage, stack)).toBe(false);
     });
   });
+
+  it("does not match 'upstream' or 'downstream' as streaming context", () => {
+    expect(
+      isLikelySSEParseError("SyntaxError: Unexpected token < in JSON from upstream proxy"),
+    ).toBe(false);
+    expect(
+      isLikelySSEParseError("SyntaxError: Unexpected token < in JSON from downstream service"),
+    ).toBe(false);
+  });
 });
