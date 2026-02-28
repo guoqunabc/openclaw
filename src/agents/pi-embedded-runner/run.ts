@@ -1012,8 +1012,8 @@ export async function runEmbeddedPiAgent(
           // Same cap as above to prevent infinite loops on persistent provider errors.
           if (
             !aborted &&
-            (isLikelySSEParseError(assistantErrorText) ||
-              isLikelySSEParseError(lastAssistant?.errorMessage))
+            (isLikelySSEParseError(assistantErrorText, "streaming/assistant-response") ||
+              isLikelySSEParseError(lastAssistant?.errorMessage, "streaming/assistant-response"))
           ) {
             sseParseRetries++;
             if (sseParseRetries <= 3) {
