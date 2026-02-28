@@ -486,6 +486,131 @@ describe("handleFeishuMessage command authorization", () => {
     );
   });
 
+  it("expands merge_forward content from API sub-messages", async () => {
+    mockShouldComputeCommandAuthorized.mockReturnValue(false);
+    const mockGetMerged = vi.fn().mockResolvedValue({
+      code: 0,
+      data: {
+        items: [
+          {
+            message_id: "container",
+            msg_type: "merge_forward",
+            body: { content: JSON.stringify({ text: "Merged and Forwarded Message" }) },
+          },
+          {
+            message_id: "sub-2",
+            upper_message_id: "container",
+            msg_type: "file",
+            body: { content: JSON.stringify({ file_name: "report.pdf" }) },
+            create_time: "2000",
+          },
+          {
+            message_id: "sub-1",
+            upper_message_id: "container",
+            msg_type: "text",
+            body: { content: JSON.stringify({ text: "alpha" }) },
+            create_time: "1000",
+          },
+        ],
+      },
+    });
+    mockCreateFeishuClient.mockReturnValue({
+      contact: {
+        user: {
+          get: vi.fn().mockResolvedValue({ data: { user: { name: "Sender" } } }),
+        },
+      },
+      im: {
+        message: {
+          get: mockGetMerged,
+        },
+      },
+    });
+
+    const cfg: ClawdbotConfig = {
+      channels: {
+        feishu: {
+          dmPolicy: "open",
+        },
+      },
+    } as ClawdbotConfig;
+
+    const event: FeishuMessageEvent = {
+      sender: {
+        sender_id: {
+          open_id: "ou-merge",
+        },
+      },
+      message: {
+        message_id: "msg-merge-forward",
+        chat_id: "oc-dm",
+        chat_type: "p2p",
+        message_type: "merge_forward",
+        content: JSON.stringify({ text: "Merged and Forwarded Message" }),
+      },
+    };
+
+    await dispatchMessage({ cfg, event });
+
+    expect(mockGetMerged).toHaveBeenCalledWith({
+      path: { message_id: "msg-merge-forward" },
+    });
+    expect(mockFinalizeInboundContext).toHaveBeenCalledWith(
+      expect.objectContaining({
+        BodyForAgent: expect.stringContaining(
+          "[Merged and Forwarded Messages]\n- alpha\n- [File: report.pdf]",
+        ),
+      }),
+    );
+  });
+
+  it("falls back when merge_forward API returns no sub-messages", async () => {
+    mockShouldComputeCommandAuthorized.mockReturnValue(false);
+    mockCreateFeishuClient.mockReturnValue({
+      contact: {
+        user: {
+          get: vi.fn().mockResolvedValue({ data: { user: { name: "Sender" } } }),
+        },
+      },
+      im: {
+        message: {
+          get: vi.fn().mockResolvedValue({ code: 0, data: { items: [] } }),
+        },
+      },
+    });
+
+    const cfg: ClawdbotConfig = {
+      channels: {
+        feishu: {
+          dmPolicy: "open",
+        },
+      },
+    } as ClawdbotConfig;
+
+    const event: FeishuMessageEvent = {
+      sender: {
+        sender_id: {
+          open_id: "ou-merge-empty",
+        },
+      },
+      message: {
+        message_id: "msg-merge-empty",
+        chat_id: "oc-dm",
+        chat_type: "p2p",
+        message_type: "merge_forward",
+        content: JSON.stringify({ text: "Merged and Forwarded Message" }),
+      },
+    };
+
+    await dispatchMessage({ cfg, event });
+
+    expect(mockFinalizeInboundContext).toHaveBeenCalledWith(
+      expect.objectContaining({
+        BodyForAgent: expect.stringContaining("[Merged and Forwarded Message - could not fetch]"),
+      }),
+    );
+  });
+
   it("dispatches once and appends permission notice to the main agent body", async () => {
     mockShouldComputeCommandAuthorized.mockReturnValue(false);
     mockCreateFeishuClient.mockReturnValue({
@@ -657,6 +782,44 @@ describe("handleFeishuMessage command authorization", () => {
     expect(mockResolveAgentRoute).toHaveBeenCalledWith(
       expect.objectContaining({
         peer: { kind: "group", id: "oc-group:topic:om_root_legacy" },
+        parentPeer: { kind: "group", id: "oc-group" },
+      }),
+    );
+  });
+
+  it("uses message_id as topic root when group_topic + replyInThread and no root_id", async () => {
+    mockShouldComputeCommandAuthorized.mockReturnValue(false);
+
+    const cfg: ClawdbotConfig = {
+      channels: {
+        feishu: {
+          groups: {
+            "oc-group": {
+              requireMention: false,
+              groupSessionScope: "group_topic",
+              replyInThread: "enabled",
+            },
+          },
+        },
+      },
+    } as ClawdbotConfig;
+
+    const event: FeishuMessageEvent = {
+      sender: { sender_id: { open_id: "ou-topic-init" } },
+      message: {
+        message_id: "msg-new-topic-root",
+        chat_id: "oc-group",
+        chat_type: "group",
+        message_type: "text",
+        content: JSON.stringify({ text: "create topic" }),
+      },
+    };
+
+    await dispatchMessage({ cfg, event });
+
+    expect(mockResolveAgentRoute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        peer: { kind: "group", id: "oc-group:topic:msg-new-topic-root" },
         parentPeer: { kind: "group", id: "oc-group" },
       }),
     );
