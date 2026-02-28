@@ -909,8 +909,7 @@ export function isLikelySSEParseError(
   // Generic JSON parse failure from streaming context (pi-ai error wrapper).
   // Require streaming stack when available to avoid false positives.
   if (
-    (lower.includes("unexpected end of json input") ||
-      lower.includes("expected ',' or '}' after property value in json") ||
+    (lower.includes("expected ',' or '}' after property value in json") ||
       lower.includes("expected double-quoted property name in json")) &&
     hasStreamingContext &&
     !isLikelyContextOverflowError(errorMessage) &&
