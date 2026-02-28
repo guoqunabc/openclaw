@@ -868,8 +868,8 @@ export function isLikelySSEParseError(
     stackLower.includes("sse") ||
     stackLower.includes("stream.") ||
     stackLower.includes("_stream") ||
-    stackLower.includes("anthropic") ||
-    stackLower.includes("openai");
+    stackLower.includes("anthropic/streaming") ||
+    stackLower.includes("openai/streaming");
   const messageIndicatesStreaming = lower.includes("sse") || /\bstream(ing)?\b/.test(lower);
   const hasStreamingContext =
     explicitStreamingContext !== undefined
