@@ -39,6 +39,7 @@ import {
   isBillingAssistantError,
   isCompactionFailureError,
   isLikelyContextOverflowError,
+  isLikelySSEParseError,
   isFailoverAssistantError,
   isFailoverErrorMessage,
   parseImageSizeError,
@@ -534,6 +535,7 @@ export async function runEmbeddedPiAgent(
           agentDir,
         });
       };
+      let sseParseRetries = 0;
       try {
         while (true) {
           if (runLoopIterations >= MAX_RUN_LOOP_ITERATIONS) {
@@ -710,6 +712,7 @@ export async function runEmbeddedPiAgent(
               log.warn(
                 `context overflow persisted after in-attempt compaction (attempt ${overflowCompactionAttempts}/${MAX_OVERFLOW_COMPACTION_ATTEMPTS}); retrying prompt without additional compaction for ${provider}/${modelId}`,
               );
+              sseParseRetries = 0;
               continue;
             }
             // Attempt explicit overflow compaction only when this attempt did not
@@ -759,6 +762,7 @@ export async function runEmbeddedPiAgent(
               if (compactResult.compacted) {
                 autoCompactionCount += 1;
                 log.info(`auto-compaction succeeded for ${provider}/${modelId}; retrying prompt`);
+                sseParseRetries = 0;
                 continue;
               }
               log.warn(
@@ -802,6 +806,7 @@ export async function runEmbeddedPiAgent(
                   );
                   // Do NOT reset overflowCompactionAttempts here — the global cap must remain
                   // enforced across all iterations to prevent unbounded compaction cycles (OC-65).
+                  sseParseRetries = 0;
                   continue;
                 }
                 log.warn(
@@ -903,6 +908,27 @@ export async function runEmbeddedPiAgent(
                 },
               };
             }
+            // Handle malformed SSE parse errors (proxy-induced truncation/splitting) with auto-retry.
+            // Cap consecutive SSE retries to avoid loops when a provider consistently returns
+            // non-SSE malformed responses; after the cap, fall through to failover/rotation.
+            if (
+              isLikelySSEParseError(
+                errorText,
+                promptError instanceof Error ? promptError.stack : undefined,
+              )
+            ) {
+              sseParseRetries++;
+              if (sseParseRetries <= 3) {
+                log.warn(
+                  `[sse-parse-retry] Malformed SSE event from ${provider}/${modelId} (attempt ${sseParseRetries}/3); retrying (error: ${errorText.slice(0, 200)})`,
+                );
+                continue;
+              }
+              log.warn(
+                `[sse-parse-retry] SSE parse retry cap reached for ${provider}/${modelId}; falling through to failover`,
+              );
+              sseParseRetries = 0;
+            }
             const promptFailoverReason = classifyFailoverReason(errorText);
             await maybeMarkAuthProfileFailure({
               profileId: lastProfileId,
@@ -913,6 +939,7 @@ export async function runEmbeddedPiAgent(
               promptFailoverReason !== "timeout" &&
               (await advanceAuthProfile())
             ) {
+              sseParseRetries = 0;
               continue;
             }
             const fallbackThinking = pickFallbackThinkingLevel({
@@ -924,6 +951,7 @@ export async function runEmbeddedPiAgent(
                 `unsupported thinking level for ${provider}/${modelId}; retrying with ${fallbackThinking}`,
               );
               thinkLevel = fallbackThinking;
+              sseParseRetries = 0;
               continue;
             }
             // FIX: Throw FailoverError for prompt errors when fallbacks configured
@@ -949,6 +977,7 @@ export async function runEmbeddedPiAgent(
               `unsupported thinking level for ${provider}/${modelId}; retrying with ${fallbackThinking}`,
             );
             thinkLevel = fallbackThinking;
+            sseParseRetries = 0;
             continue;
           }
 
@@ -977,6 +1006,26 @@ export async function runEmbeddedPiAgent(
             log.warn(
               `Profile ${lastProfileId} rejected image payload${details ? ` (${details})` : ""}.`,
             );
+          }
+
+          // Handle malformed SSE parse errors (proxy-induced truncation/splitting) with auto-retry.
+          // Same cap as above to prevent infinite loops on persistent provider errors.
+          if (
+            !aborted &&
+            (isLikelySSEParseError(assistantErrorText, { streamingContext: true }) ||
+              isLikelySSEParseError(lastAssistant?.errorMessage, { streamingContext: true }))
+          ) {
+            sseParseRetries++;
+            if (sseParseRetries <= 3) {
+              log.warn(
+                `[sse-parse-retry] Malformed SSE event from ${provider}/${modelId} (attempt ${sseParseRetries}/3); retrying (error: ${(assistantErrorText ?? lastAssistant?.errorMessage ?? "").slice(0, 200)})`,
+              );
+              continue;
+            }
+            log.warn(
+              `[sse-parse-retry] SSE parse retry cap reached for ${provider}/${modelId}; falling through to failover`,
+            );
+            sseParseRetries = 0;
           }
 
           // Rotate on timeout to try another account/model path in this turn,
@@ -1009,6 +1058,7 @@ export async function runEmbeddedPiAgent(
 
             const rotated = await advanceAuthProfile();
             if (rotated) {
+              sseParseRetries = 0;
               continue;
             }
 

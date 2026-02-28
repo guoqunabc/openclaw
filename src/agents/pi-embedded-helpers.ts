@@ -37,6 +37,7 @@ export {
   isRateLimitErrorMessage,
   isTransientHttpError,
   isTimeoutErrorMessage,
+  isLikelySSEParseError,
   parseImageDimensionError,
   parseImageSizeError,
 } from "./pi-embedded-helpers/errors.js";
