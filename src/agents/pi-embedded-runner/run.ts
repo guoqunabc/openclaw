@@ -908,7 +908,12 @@ export async function runEmbeddedPiAgent(
             // Handle malformed SSE parse errors (proxy-induced truncation/splitting) with auto-retry.
             // Cap consecutive SSE retries to avoid loops when a provider consistently returns
             // non-SSE malformed responses; after the cap, fall through to failover/rotation.
-            if (isLikelySSEParseError(errorText)) {
+            if (
+              isLikelySSEParseError(
+                errorText,
+                promptError instanceof Error ? promptError.stack : undefined,
+              )
+            ) {
               sseParseRetries++;
               if (sseParseRetries <= 3) {
                 log.warn(

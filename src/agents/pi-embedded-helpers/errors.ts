@@ -843,11 +843,26 @@ export function isImageSizeError(errorMessage?: string): boolean {
  * SSE `data:` lines or splits them via raw newlines in thinking_delta content.
  * The Anthropic SDK's `JSON.parse(sse.data)` throws, killing the entire stream.
  */
-export function isLikelySSEParseError(errorMessage?: string): boolean {
+export function isLikelySSEParseError(errorMessage?: string, errorStack?: string): boolean {
   if (!errorMessage) {
     return false;
   }
   const lower = errorMessage.toLowerCase();
+  const stackLower = errorStack?.toLowerCase() ?? "";
+
+  // When a stack trace is available, check if the error originated from SSE/streaming code.
+  // This narrows detection so generic JSON parse errors (e.g. from tool results or config
+  // parsing) are not misidentified as SSE failures.
+  const hasStreamingStack =
+    !errorStack ||
+    stackLower.includes("streaming") ||
+    stackLower.includes("fromsse") ||
+    stackLower.includes("from_sse") ||
+    stackLower.includes("sse") ||
+    stackLower.includes("stream.") ||
+    stackLower.includes("_stream") ||
+    stackLower.includes("anthropic") ||
+    stackLower.includes("openai");
 
   // Core pattern: SyntaxError from JSON.parse on SSE data
   const hasSyntaxError =
@@ -864,11 +879,11 @@ export function isLikelySSEParseError(errorMessage?: string): boolean {
     lower.includes("sse") ||
     lower.includes("stream");
 
-  if (hasSyntaxError && hasJsonContext) {
+  if (hasSyntaxError && hasJsonContext && hasStreamingStack) {
     return true;
   }
 
-  // Anthropic SDK streaming.js specific patterns
+  // Anthropic SDK streaming.js specific patterns (already highly specific, no stack check needed)
   if (
     lower.includes("could not parse sse event") ||
     lower.includes("failed to parse sse") ||
@@ -877,11 +892,13 @@ export function isLikelySSEParseError(errorMessage?: string): boolean {
     return true;
   }
 
-  // Generic JSON parse failure from streaming context (pi-ai error wrapper)
+  // Generic JSON parse failure from streaming context (pi-ai error wrapper).
+  // Require streaming stack when available to avoid false positives.
   if (
     (lower.includes("unexpected end of json input") ||
       lower.includes("expected ',' or '}' after property value in json") ||
       lower.includes("expected double-quoted property name in json")) &&
+    hasStreamingStack &&
     !isLikelyContextOverflowError(errorMessage) &&
     !isRateLimitErrorMessage(errorMessage) &&
     !isBillingErrorMessage(errorMessage)

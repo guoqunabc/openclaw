@@ -83,7 +83,6 @@ describe("isLikelySSEParseError", () => {
   });
 
   it("matches real-world Azure proxy truncation error", () => {
-    // Simulates what the Anthropic SDK throws when Azure truncates SSE data lines
     expect(
       isLikelySSEParseError(
         "SyntaxError: Expected double-quoted property name in JSON at position 83 (line 1 column 84)",
@@ -92,7 +91,63 @@ describe("isLikelySSEParseError", () => {
   });
 
   it("matches real-world newline-in-thinking error", () => {
-    // Simulates what happens when thinking_delta contains raw newlines breaking SSE framing
     expect(isLikelySSEParseError("SyntaxError: Unexpected end of JSON input")).toBe(true);
+  });
+
+  // Stack trace validation tests
+  describe("stack trace narrowing", () => {
+    const sseMessage = "SyntaxError: Unexpected end of JSON input";
+
+    it("matches when stack contains streaming.js", () => {
+      const stack =
+        "SyntaxError: Unexpected end of JSON input\n" +
+        "    at JSON.parse (<anonymous>)\n" +
+        "    at Stream._fromSSEResponse (node_modules/@anthropic-ai/sdk/streaming.js:45:12)";
+      expect(isLikelySSEParseError(sseMessage, stack)).toBe(true);
+    });
+
+    it("matches when stack contains anthropic SDK path", () => {
+      const stack =
+        "SyntaxError: Unexpected end of JSON input\n" +
+        "    at JSON.parse (<anonymous>)\n" +
+        "    at processChunk (node_modules/@anthropic-ai/sdk/core/streaming.mjs:120:30)";
+      expect(isLikelySSEParseError(sseMessage, stack)).toBe(true);
+    });
+
+    it("matches when stack contains openai SDK path", () => {
+      const stack =
+        "SyntaxError: Unexpected end of JSON input\n" +
+        "    at JSON.parse (<anonymous>)\n" +
+        "    at Stream.parse (node_modules/openai/streaming.js:88:15)";
+      expect(isLikelySSEParseError(sseMessage, stack)).toBe(true);
+    });
+
+    it("rejects generic JSON error with non-streaming stack", () => {
+      const stack =
+        "SyntaxError: Unexpected end of JSON input\n" +
+        "    at JSON.parse (<anonymous>)\n" +
+        "    at parseToolResult (src/tools/parser.js:42:20)\n" +
+        "    at executeToolCall (src/tools/executor.js:100:10)";
+      expect(isLikelySSEParseError(sseMessage, stack)).toBe(false);
+    });
+
+    it("rejects generic JSON error with config parsing stack", () => {
+      const stack =
+        "SyntaxError: Unexpected end of JSON input\n" +
+        "    at JSON.parse (<anonymous>)\n" +
+        "    at loadConfig (src/config/loader.js:15:25)";
+      expect(isLikelySSEParseError(sseMessage, stack)).toBe(false);
+    });
+
+    it("still matches SSE-specific messages regardless of stack", () => {
+      const nonStreamingStack =
+        "Error: Could not parse SSE event\n    at someRandomPlace (src/foo.js:1:1)";
+      expect(isLikelySSEParseError("Could not parse SSE event", nonStreamingStack)).toBe(true);
+    });
+
+    it("matches when no stack is provided (backwards compatible)", () => {
+      expect(isLikelySSEParseError(sseMessage)).toBe(true);
+      expect(isLikelySSEParseError(sseMessage, undefined)).toBe(true);
+    });
   });
 });
