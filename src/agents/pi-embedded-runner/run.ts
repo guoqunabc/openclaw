@@ -936,6 +936,7 @@ export async function runEmbeddedPiAgent(
               promptFailoverReason !== "timeout" &&
               (await advanceAuthProfile())
             ) {
+              sseParseRetries = 0;
               continue;
             }
             const fallbackThinking = pickFallbackThinkingLevel({
@@ -947,6 +948,7 @@ export async function runEmbeddedPiAgent(
                 `unsupported thinking level for ${provider}/${modelId}; retrying with ${fallbackThinking}`,
               );
               thinkLevel = fallbackThinking;
+              sseParseRetries = 0;
               continue;
             }
             // FIX: Throw FailoverError for prompt errors when fallbacks configured
@@ -1052,6 +1054,7 @@ export async function runEmbeddedPiAgent(
 
             const rotated = await advanceAuthProfile();
             if (rotated) {
+              sseParseRetries = 0;
               continue;
             }
 
