@@ -357,3 +357,45 @@ describe("feishuOutbound.sendMedia renderMode", () => {
     );
   });
 });
+
+describe("feishuOutbound.sendMedia empty text fallback", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sendMessageFeishuMock.mockResolvedValue({ messageId: "text_msg" });
+    sendMarkdownCardFeishuMock.mockResolvedValue({ messageId: "card_msg" });
+    sendMediaFeishuMock.mockResolvedValue({ messageId: "media_msg" });
+  });
+
+  it("does not send an empty message when text and mediaUrl are both empty", async () => {
+    const result = await feishuOutbound.sendMedia?.({
+      cfg: {} as any,
+      to: "chat_1",
+      text: "",
+      mediaUrl: "",
+      accountId: "main",
+    });
+
+    expect(sendMessageFeishuMock).not.toHaveBeenCalled();
+    expect(sendMarkdownCardFeishuMock).not.toHaveBeenCalled();
+    expect(sendMediaFeishuMock).not.toHaveBeenCalled();
+    expect(result).toEqual(
+      expect.objectContaining({ channel: "feishu", messageId: "", chatId: "" }),
+    );
+  });
+
+  it("does not send an empty message when text is whitespace-only and no mediaUrl", async () => {
+    const result = await feishuOutbound.sendMedia?.({
+      cfg: {} as any,
+      to: "chat_1",
+      text: "   \n  ",
+      mediaUrl: undefined,
+      accountId: "main",
+    });
+
+    expect(sendMessageFeishuMock).not.toHaveBeenCalled();
+    expect(sendMarkdownCardFeishuMock).not.toHaveBeenCalled();
+    expect(result).toEqual(
+      expect.objectContaining({ channel: "feishu", messageId: "", chatId: "" }),
+    );
+  });
+});

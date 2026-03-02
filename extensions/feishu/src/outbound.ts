@@ -162,11 +162,15 @@ export const feishuOutbound: ChannelOutboundAdapter = {
       }
     }
 
-    // No media URL, just return text result
+    // No media URL — only send if there is meaningful text left.
+    const fallbackText = (text ?? "").trim();
+    if (!fallbackText) {
+      return { channel: "feishu", messageId: "", chatId: "" };
+    }
     const result = await sendOutboundText({
       cfg,
       to,
-      text: text ?? "",
+      text: fallbackText,
       accountId: accountId ?? undefined,
       replyToMessageId,
     });
