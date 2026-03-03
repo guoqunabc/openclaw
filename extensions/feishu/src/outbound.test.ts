@@ -358,6 +358,49 @@ describe("feishuOutbound.sendMedia renderMode", () => {
   });
 });
 
+describe("feishuOutbound.sendMedia text-only (no mediaUrl) does not double-send", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sendMessageFeishuMock.mockResolvedValue({ messageId: "text_msg" });
+    sendMarkdownCardFeishuMock.mockResolvedValue({ messageId: "card_msg" });
+    sendMediaFeishuMock.mockResolvedValue({ messageId: "media_msg" });
+  });
+
+  it("sends text exactly once when mediaUrl is empty", async () => {
+    const result = await feishuOutbound.sendMedia?.({
+      cfg: {} as any,
+      to: "chat_1",
+      text: "hello world",
+      mediaUrl: "",
+      accountId: "main",
+    });
+
+    // Text should be sent exactly once (at the top), not twice
+    expect(sendMessageFeishuMock).toHaveBeenCalledTimes(1);
+    expect(sendMessageFeishuMock).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "chat_1", text: "hello world" }),
+    );
+    expect(sendMediaFeishuMock).not.toHaveBeenCalled();
+    // Returns sentinel since no media was delivered
+    expect(result).toEqual(
+      expect.objectContaining({ channel: "feishu", messageId: "", chatId: "" }),
+    );
+  });
+
+  it("sends text exactly once when mediaUrl is undefined", async () => {
+    await feishuOutbound.sendMedia?.({
+      cfg: {} as any,
+      to: "chat_1",
+      text: "some caption",
+      mediaUrl: undefined as any,
+      accountId: "main",
+    });
+
+    expect(sendMessageFeishuMock).toHaveBeenCalledTimes(1);
+    expect(sendMediaFeishuMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("feishuOutbound.sendMedia empty text fallback", () => {
   beforeEach(() => {
     vi.clearAllMocks();

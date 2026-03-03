@@ -284,12 +284,11 @@ export function buildFeishuPostMessagePayload(params: { messageText: string }): 
     },
   };
 
-  const content = JSON.stringify(payload);
-  // Validate: round-trip parse to catch any serialization anomaly early.
+  let content: string;
   try {
-    JSON.parse(content);
+    content = JSON.stringify(payload);
   } catch {
-    throw new Error("Feishu post payload produced invalid JSON");
+    throw new Error("Feishu post payload produced invalid JSON (circular reference?)");
   }
   return { content, msgType: "post" };
 }
@@ -357,12 +356,11 @@ export type SendFeishuCardParams = {
 export async function sendCardFeishu(params: SendFeishuCardParams): Promise<FeishuSendResult> {
   const { cfg, to, card, replyToMessageId, replyInThread, accountId } = params;
   const { client, receiveId, receiveIdType } = resolveFeishuSendTarget({ cfg, to, accountId });
-  const content = JSON.stringify(card);
-  // Validate: round-trip parse to catch serialization anomalies early.
+  let content: string;
   try {
-    JSON.parse(content);
+    content = JSON.stringify(card);
   } catch {
-    throw new Error("Feishu card payload produced invalid JSON");
+    throw new Error("Feishu card payload produced invalid JSON (circular reference?)");
   }
 
   const directParams = { receiveId, receiveIdType, content, msgType: "interactive" };
@@ -407,11 +405,11 @@ export async function updateCardFeishu(params: {
   }
 
   const client = createFeishuClient(account);
-  const content = JSON.stringify(card);
+  let content: string;
   try {
-    JSON.parse(content);
+    content = JSON.stringify(card);
   } catch {
-    throw new Error("Feishu card update payload produced invalid JSON");
+    throw new Error("Feishu card update payload produced invalid JSON (circular reference?)");
   }
 
   const response = await client.im.message.patch({
