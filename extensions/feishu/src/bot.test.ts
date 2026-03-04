@@ -1489,6 +1489,7 @@ describe("handleFeishuMessage command authorization", () => {
             "oc-group": {
               requireMention: false,
               replyInThread: "enabled",
+              replyTarget: "root",
             },
           },
         },
@@ -1513,6 +1514,42 @@ describe("handleFeishuMessage command authorization", () => {
       expect.objectContaining({
         replyToMessageId: "om_root_topic",
         rootId: "om_root_topic",
+      }),
+    );
+  });
+
+  it("replies to the triggering message by default (replyTarget=message) even when root_id is present", async () => {
+    mockShouldComputeCommandAuthorized.mockReturnValue(false);
+
+    const cfg: ClawdbotConfig = {
+      channels: {
+        feishu: {
+          groups: {
+            "oc-group": {
+              requireMention: false,
+            },
+          },
+        },
+      },
+    } as ClawdbotConfig;
+
+    const event: FeishuMessageEvent = {
+      sender: { sender_id: { open_id: "ou-quote-user" } },
+      message: {
+        message_id: "om_user_reply",
+        root_id: "om_original_msg",
+        chat_id: "oc-group",
+        chat_type: "group",
+        message_type: "text",
+        content: JSON.stringify({ text: "quote reply in normal group" }),
+      },
+    };
+
+    await dispatchMessage({ cfg, event });
+
+    expect(mockCreateFeishuReplyDispatcher).toHaveBeenCalledWith(
+      expect.objectContaining({
+        replyToMessageId: "om_user_reply",
       }),
     );
   });

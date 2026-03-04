@@ -1,0 +1,1 @@
+- Feishu/reply target: add `replyTarget` config (`"message"` | `"root"`, default `"message"`) to control whether bot replies target the triggering message or the topic root. Fixes #29968 regression where bot replies in normal group chats silently entered topic threads when users quote-replied.

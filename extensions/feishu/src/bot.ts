@@ -1337,7 +1337,12 @@ export async function handleFeishuMessage(params: {
     const messageCreateTimeMs = event.message.create_time
       ? parseInt(event.message.create_time, 10)
       : undefined;
-    const replyTargetMessageId = ctx.rootId ?? ctx.messageId;
+    // Resolve reply target strategy: per-group config > global feishu config > default ("message").
+    // "message": reply to the triggering message (visible in main chat view).
+    // "root": reply to topic root message (stays within the topic thread).
+    const replyTargetStrategy = groupConfig?.replyTarget ?? feishuCfg?.replyTarget ?? "message";
+    const replyTargetMessageId =
+      replyTargetStrategy === "root" ? (ctx.rootId ?? ctx.messageId) : ctx.messageId;
     const threadReply = isGroup ? (groupSession?.threadReply ?? false) : false;
 
     if (broadcastAgents) {
