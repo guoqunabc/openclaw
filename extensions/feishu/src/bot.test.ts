@@ -1593,6 +1593,44 @@ describe("handleFeishuMessage command authorization", () => {
     );
   });
 
+  it("replies to topic root in topic-sender group with root_id", async () => {
+    mockShouldComputeCommandAuthorized.mockReturnValue(false);
+
+    const cfg: ClawdbotConfig = {
+      channels: {
+        feishu: {
+          groups: {
+            "oc-group": {
+              requireMention: false,
+              groupSessionScope: "group_topic_sender",
+            },
+          },
+        },
+      },
+    } as ClawdbotConfig;
+
+    const event: FeishuMessageEvent = {
+      sender: { sender_id: { open_id: "ou-topic-sender-user" } },
+      message: {
+        message_id: "om_topic_sender_reply",
+        root_id: "om_topic_sender_root",
+        chat_id: "oc-group",
+        chat_type: "group",
+        message_type: "text",
+        content: JSON.stringify({ text: "hello in topic sender group" }),
+      },
+    };
+
+    await dispatchMessage({ cfg, event });
+
+    expect(mockCreateFeishuReplyDispatcher).toHaveBeenCalledWith(
+      expect.objectContaining({
+        replyToMessageId: "om_topic_sender_root",
+        rootId: "om_topic_sender_root",
+      }),
+    );
+  });
+
   it("forces thread replies when inbound message contains thread_id", async () => {
     mockShouldComputeCommandAuthorized.mockReturnValue(false);
 
